@@ -131,8 +131,8 @@
 
 <header>
   <h1>ring402 <span>devnet demo</span></h1>
-  <p><a href="https://www.x402.org" target="_blank" rel="noreferrer">x402</a> is an open standard for APIs that charge per request. The API answers "402 Payment Required", the caller pays, and then it gets the data. On Solana that payment is a normal public transfer, so anyone can see what an API charges, what it earns and what each customer spends.</p>
-  <p>ring402 pays with a confidential transfer on <a href="https://www.helius.dev/docs/privacy" target="_blank" rel="noreferrer">Privacy Rings</a> instead. Anyone can still see who paid whom, but only the seller can read the amount and the token. Everything here runs on Solana <span id="network">devnet</span>, the test network: the payments are real transactions, but the SOL is test money with no value.</p>
+  <p><a href="https://www.x402.org" target="_blank" rel="noreferrer">x402</a> lets an API charge per request. On Solana each of those payments is public, so anyone can see what an API earns and what its customers spend.</p>
+  <p>ring402 pays through <a href="https://www.helius.dev/docs/privacy" target="_blank" rel="noreferrer">Privacy Rings</a> instead: everyone still sees who paid whom, but only the seller can read how much. Runs on <span id="network">devnet</span> with test SOL.</p>
   <dl class="parties">
     <dt>buyer</dt><dd id="agent">…</dd><dd id="balance" class="muted">an agent that pays for API calls</dd>
     <dt>seller</dt><dd id="merchant">…</dd><dd class="muted">the API, holds a key that can read payments but not spend them</dd>
