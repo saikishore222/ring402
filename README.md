@@ -2,6 +2,8 @@
 
 x402 payments where the amount stays private.
 
+Demo, running on devnet: https://ring402-demo.vercel.app
+
 An API answers `402 Payment Required`, the caller pays with a confidential transfer on [Solana Privacy Rings](https://www.helius.dev/docs/privacy), and the API serves the request. The chain shows that wallet A paid wallet B. It does not show how much or in which token.
 
 Pay more than the price and the rest becomes prepaid credit, so later calls don't touch the chain at all.
@@ -94,6 +96,8 @@ call 3           200 OK
 Three calls, one onchain payment. The agent prepaid 0.01 SOL on the first call and the other two came out of that credit. It deposits into its private balance first if it's running low.
 
 ## Demo page
+
+There's a copy running at https://ring402-demo.vercel.app. To run it yourself:
 
 ```bash
 cargo run --example demo
