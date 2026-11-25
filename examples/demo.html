@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ring402</title>
+<title>ring402 devnet demo</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5.25' fill='none' stroke='%23888' stroke-width='2.5'/></svg>">
 <style>
   :root {
@@ -39,6 +39,7 @@
   main { max-width: 880px; margin: 0 auto; padding: 56px 28px 120px; }
   h1, h2, p, pre, dl, dd { margin: 0; }
   h1 { font: 500 18px var(--mono); }
+  h1 span { font-weight: 400; color: var(--muted); }
   h2 { font-size: 15px; font-weight: 500; }
   a { color: inherit; text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
   a:hover { text-decoration-color: currentColor; }
@@ -122,9 +123,9 @@
 <main>
 
 <header>
-  <h1>ring402</h1>
+  <h1>ring402 <span>devnet demo</span></h1>
   <p><a href="https://www.x402.org" target="_blank" rel="noreferrer">x402</a> is an open standard for APIs that charge per request. The API answers "402 Payment Required", the caller pays, and then it gets the data. On Solana that payment is a normal public transfer, so anyone can see what an API charges, what it earns and what each customer spends.</p>
-  <p>ring402 pays with a confidential transfer on <a href="https://www.helius.dev/docs/privacy" target="_blank" rel="noreferrer">Privacy Rings</a> instead. Anyone can still see who paid whom, but only the seller can read the amount and the token. Every request on this page is a real payment on Solana <span id="network">devnet</span>, the test network.</p>
+  <p>ring402 pays with a confidential transfer on <a href="https://www.helius.dev/docs/privacy" target="_blank" rel="noreferrer">Privacy Rings</a> instead. Anyone can still see who paid whom, but only the seller can read the amount and the token. Everything here runs on Solana <span id="network">devnet</span>, the test network: the payments are real transactions, but the SOL is test money with no value.</p>
   <dl class="parties">
     <dt>buyer</dt><dd id="agent">…</dd><dd id="balance" class="muted">an agent that pays for API calls</dd>
     <dt>seller</dt><dd id="merchant">…</dd><dd class="muted">the API, holds a key that can read payments but not spend them</dd>

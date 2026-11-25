@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, PoisonError,
@@ -37,7 +37,7 @@ use tokio::{
     net::TcpListener,
     runtime::Runtime,
     signal::unix::{signal as on_signal, SignalKind},
-    sync::{Mutex, OnceCell},
+    sync::Mutex,
 };
 
 const PREPAY_UNITS: u64 = 6;
@@ -56,7 +56,6 @@ struct Demo {
     merchant_key: ViewingKey,
     token: Token,
     unit: u64,
-    funding: OnceCell<Option<String>>,
     local: String,
     busy: Mutex<()>,
     trace: std::sync::Mutex<Vec<Exchange>>,
@@ -66,11 +65,18 @@ struct Demo {
     calls: Limiter,
     balances: Limiter,
     requests: Limiter,
+    visitor_calls: Visitors,
+    visitor_requests: Visitors,
 }
 
 struct Limiter {
     most: usize,
     seen: std::sync::Mutex<VecDeque<Instant>>,
+}
+
+struct Visitors {
+    most: usize,
+    seen: std::sync::Mutex<HashMap<String, VecDeque<Instant>>>,
 }
 
 #[derive(Serialize)]
@@ -184,7 +190,6 @@ fn main() -> Result<()> {
             merchant_key: merchant.viewing_key.clone(),
             token,
             unit,
-            funding: OnceCell::new(),
             local: format!("http://127.0.0.1:{port}"),
             busy: Mutex::new(()),
             trace: Default::default(),
@@ -194,6 +199,8 @@ fn main() -> Result<()> {
             calls: Limiter::new(1_000),
             balances: Limiter::new(1_000),
             requests: Limiter::new(3_000),
+            visitor_calls: Visitors::new(20),
+            visitor_requests: Visitors::new(200),
         });
         let apis = Router::new()
             .route(ROUTE, forecast)
@@ -208,7 +215,8 @@ fn main() -> Result<()> {
         let listener = TcpListener::bind((host.as_str(), port)).await?;
         println!("open http://{host}:{port}");
         tokio::spawn(async move {
-            if let Err(error) = demo.funded().await {
+            let _one_at_a_time = demo.busy.lock().await;
+            if let Err(error) = demo.top_up().await {
                 eprintln!("funding the agent: {}", redacted(&error.to_string()));
             }
         });
@@ -235,7 +243,11 @@ async fn state(State(demo): State<Arc<Demo>>) -> Result<Json<Value>, Failure> {
     })))
 }
 
-async fn balance(State(demo): State<Arc<Demo>>) -> Result<Json<Value>, Failure> {
+async fn balance(
+    State(demo): State<Arc<Demo>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, Failure> {
+    demo.visitor_requests.check(&headers)?;
     demo.balances.check()?;
     let units = demo
         .agent
@@ -245,13 +257,14 @@ async fn balance(State(demo): State<Arc<Demo>>) -> Result<Json<Value>, Failure> 
     Ok(Json(json!({ "balance": demo.token.format(units) })))
 }
 
-async fn call(State(demo): State<Arc<Demo>>) -> Result<Json<Call>, Failure> {
+async fn call(State(demo): State<Arc<Demo>>, headers: HeaderMap) -> Result<Json<Call>, Failure> {
+    demo.visitor_calls.check(&headers)?;
     let _one_at_a_time = demo.busy.lock().await;
     demo.calls.check()?;
     if demo.credit_left.load(Ordering::Relaxed) < demo.unit {
         demo.payments.check()?;
+        demo.top_up().await.map_err(failure)?;
     }
-    demo.funded().await.map_err(failure)?;
     demo.trace
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -300,7 +313,11 @@ async fn call(State(demo): State<Arc<Demo>>) -> Result<Json<Call>, Failure> {
 }
 
 async fn trace(State(demo): State<Arc<Demo>>, request: Request, next: Next) -> Response {
-    if let Err(limited) = demo.requests.check() {
+    if let Err(limited) = demo
+        .visitor_requests
+        .check(request.headers())
+        .and_then(|()| demo.requests.check())
+    {
         return limited.into_response();
     }
     let method = request.method().to_string();
@@ -379,28 +396,86 @@ impl Limiter {
     }
 
     fn check(&self) -> Result<(), Failure> {
-        let now = Instant::now();
         let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
-        while seen
-            .front()
-            .is_some_and(|at| now.duration_since(*at) > HOUR)
-        {
-            seen.pop_front();
-        }
-        if seen.len() >= self.most {
+        if !admit(&mut seen, self.most, Instant::now()) {
             return Err((
                 StatusCode::TOO_MANY_REQUESTS,
                 "the demo has hit its hourly limit, try again later".into(),
             ));
         }
-        seen.push_back(now);
         Ok(())
     }
 }
 
+impl Visitors {
+    fn new(most: usize) -> Self {
+        Self {
+            most,
+            seen: Default::default(),
+        }
+    }
+
+    fn check(&self, headers: &HeaderMap) -> Result<(), Failure> {
+        let Some(visitor) = visitor(headers) else {
+            return Ok(());
+        };
+        let now = Instant::now();
+        let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.retain(|_, times| {
+            times
+                .back()
+                .is_some_and(|at| now.duration_since(*at) <= HOUR)
+        });
+        if !admit(seen.entry(visitor).or_default(), self.most, now) {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                "you've sent a lot of requests, try again in a while".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn admit(seen: &mut VecDeque<Instant>, most: usize, now: Instant) -> bool {
+    while seen
+        .front()
+        .is_some_and(|at| now.duration_since(*at) > HOUR)
+    {
+        seen.pop_front();
+    }
+    if seen.len() >= most {
+        return false;
+    }
+    seen.push_back(now);
+    true
+}
+
+fn visitor(headers: &HeaderMap) -> Option<String> {
+    let forwarded = headers.get("x-forwarded-for")?.to_str().ok()?;
+    Some(forwarded.rsplit(',').next()?.trim().to_string())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::redacted;
+    use axum::http::HeaderMap;
+
+    use super::{redacted, Visitors};
+
+    #[test]
+    fn each_visitor_gets_their_own_limit() {
+        let from = |forwarded: &str| {
+            let mut headers = HeaderMap::new();
+            headers.insert("x-forwarded-for", forwarded.parse().unwrap());
+            headers
+        };
+        let visitors = Visitors::new(2);
+
+        assert!(visitors.check(&from("1.1.1.1")).is_ok());
+        assert!(visitors.check(&from("9.9.9.9, 1.1.1.1")).is_ok());
+        assert!(visitors.check(&from("1.1.1.1")).is_err());
+        assert!(visitors.check(&from("2.2.2.2")).is_ok());
+        assert!(visitors.check(&HeaderMap::new()).is_ok());
+    }
 
     #[test]
     fn api_keys_are_cut_out_of_errors() {
@@ -421,19 +496,15 @@ async fn stopped() {
 }
 
 impl Demo {
-    async fn funded(&self) -> Result<&Option<String>> {
-        self.funding
-            .get_or_try_init(|| async {
-                let asset = self.token.mint.asset;
-                let prepay = self.unit * PREPAY_UNITS;
-                if self.agent.balance(asset).await? >= prepay * 3 {
-                    return Ok(None);
-                }
-                let signature = self.agent.deposit(asset, prepay * 6).await?;
-                println!("deposited {} in {signature}", self.token.format(prepay * 6));
-                Ok(Some(signature.to_string()))
-            })
-            .await
+    async fn top_up(&self) -> Result<()> {
+        let asset = self.token.mint.asset;
+        let prepay = self.unit * PREPAY_UNITS;
+        if self.agent.balance(asset).await? >= prepay * 2 {
+            return Ok(());
+        }
+        let signature = self.agent.deposit(asset, prepay * 6).await?;
+        println!("deposited {} in {signature}", self.token.format(prepay * 6));
+        Ok(())
     }
 
     async fn show(self: &Arc<Self>, receipt: Receipt) -> Result<Shown> {

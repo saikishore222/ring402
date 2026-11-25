@@ -127,7 +127,7 @@ It reads its settings from the environment:
 | `PAYMENTS_PER_HOUR` | Onchain payments the demo will make per hour. Each one prepays six requests. Default 20. |
 | `MINT` | Price the APIs in this SPL token instead of SOL. |
 
-Use a separate wallet for the agent, not your main one, and keep only a little devnet SOL in it. Anyone who opens the page can spend from it, up to `PAYMENTS_PER_HOUR`.
+Use a separate wallet for the agent, not your main one, and keep only a little devnet SOL in it. Anyone who opens the page can spend from it, up to `PAYMENTS_PER_HOUR`. The demo moves 0.108 SOL from it into the agent's private balance whenever that runs low, so keep at least that much there.
 
 ```bash
 solana-keygen new --no-bip39-passphrase -o .keys/demo-payer.json
@@ -159,7 +159,7 @@ vercel env add PAYER_SECRET production < .keys/demo-payer.json
 vercel deploy --prod
 ```
 
-Errors sent to the browser have the API key cut out of them, and onchain payments, the paid route, the balance lookup and the demo calls each have an hourly cap so a busy page can't drain the wallet or your Helius credits. Requests paid from credit don't count toward the payment cap.
+Errors sent to the browser have the API key cut out of them, and onchain payments, the paid route, the balance lookup and the demo calls each have an hourly cap so a busy page can't drain the wallet or your Helius credits. Requests paid from credit don't count toward the payment cap. Behind a proxy that sets `X-Forwarded-For`, as Vercel does, each visitor also gets their own limit: 20 demo calls and 200 other requests an hour, so one script can't use up the shared caps.
 
 ## Sessions
 
