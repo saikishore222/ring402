@@ -46,7 +46,6 @@
   code, pre, .mono { font-family: var(--mono); font-size: 13px; }
   .muted { color: var(--muted); }
   .faint { color: var(--faint); }
-  .nowrap { white-space: nowrap; }
   .ok { color: var(--ok); }
   .warn { color: var(--warn); }
   .bad { color: var(--bad); }
@@ -56,8 +55,6 @@
     border: 0; border-radius: 4px; padding: 5px 14px;
   }
   button:disabled { opacity: .45; cursor: default; }
-  button.link { font: inherit; color: inherit; background: none; padding: 0; border-radius: 0; text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
-  button.link:hover { text-decoration-color: currentColor; }
   :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
   header p { margin-top: 10px; max-width: 62ch; }
@@ -89,12 +86,14 @@
   #detail h2 .muted { margin-left: 10px; font: 13px var(--mono); }
 
   .scroll { overflow-x: auto; margin-top: 20px; }
-  .reads { min-width: 640px; table-layout: fixed; }
-  .reads th:first-child { width: 104px; }
+  .try { margin-top: 18px; }
+  .reads { min-width: 760px; table-layout: fixed; }
+  .reads th:first-child { width: 84px; }
   .reads tbody th { color: var(--muted); font-size: 14px; }
   .reads td { font: 13px/20px var(--mono); overflow-wrap: anywhere; }
   .reads td.cipher { color: var(--faint); }
   .reads td.cipher span { display: block; margin-top: 4px; font-family: var(--sans); color: var(--muted); }
+  .reads td.closed { font-family: var(--sans); font-size: 14px; color: var(--muted); }
 
   .wire { margin-top: 14px; font: 13px/22px var(--mono); }
   .wire .g { color: var(--faint); user-select: none; }
@@ -114,6 +113,7 @@
     .parties { grid-template-columns: max-content 1fr; }
     .parties dd:nth-of-type(2n) { grid-column: 2; }
     .requests td { white-space: nowrap; }
+    .requests tr.empty td { white-space: normal; }
     .requests th:nth-child(4), .requests td:nth-child(4) { display: none; }
   }
 </style>
@@ -123,10 +123,11 @@
 
 <header>
   <h1>ring402</h1>
-  <p>x402 payments where the amount stays private. Each request below is a real paid call on Solana <span id="network">devnet</span>, settled with a confidential transfer on <a href="https://www.helius.dev/docs/privacy" target="_blank" rel="noreferrer">Privacy Rings</a>.</p>
+  <p><a href="https://www.x402.org" target="_blank" rel="noreferrer">x402</a> is an open standard for APIs that charge per request. The API answers "402 Payment Required", the caller pays, and then it gets the data. On Solana that payment is a normal public transfer, so anyone can see what an API charges, what it earns and what each customer spends.</p>
+  <p>ring402 pays with a confidential transfer on <a href="https://www.helius.dev/docs/privacy" target="_blank" rel="noreferrer">Privacy Rings</a> instead. Anyone can still see who paid whom, but only the seller can read the amount and the token. Every request on this page is a real payment on Solana <span id="network">devnet</span>, the test network.</p>
   <dl class="parties">
-    <dt>agent</dt><dd id="agent">…</dd><dd id="balance" class="muted"></dd>
-    <dt>merchant</dt><dd id="merchant">…</dd><dd class="muted">viewing key only, can't spend</dd>
+    <dt>buyer</dt><dd id="agent">…</dd><dd id="balance" class="muted">an agent that pays for API calls</dd>
+    <dt>seller</dt><dd id="merchant">…</dd><dd class="muted">the API, holds a key that can read payments but not spend them</dd>
   </dl>
 </header>
 
@@ -134,7 +135,7 @@
   <div class="send">
     <code id="route">GET /forecast</code>
     <span id="price" class="muted"></span>
-    <button type="button" id="send" disabled>send</button>
+    <button type="button" id="send" disabled>send request</button>
   </div>
   <table class="requests">
     <thead><tr><th>#</th><th>status</th><th>paid</th><th>credit left</th><th class="r">time</th></tr></thead>
@@ -170,6 +171,7 @@ function el(tag, attrs = {}, ...kids) {
 
 const link = (href, text) => el("a", { href, target: "_blank", rel: "noreferrer", text });
 const address = (a) => el("a", { href: explorer("address", a), target: "_blank", rel: "noreferrer", title: a, text: short(a) });
+const amount = (p) => p.merchant ? p.merchant.amount : "a payment";
 const tone = (code) => code === 402 ? "warn" : code < 300 ? "ok" : "bad";
 const status = (code) => el("span", { class: "st " + tone(code), text: REASON[code] ? code + " " + REASON[code] : String(code) });
 
@@ -191,8 +193,8 @@ function row(r) {
   }
   const c = r.call;
   const paid = c.payment
-    ? el("td", { text: (c.payment.merchant ? c.payment.merchant.amount : "") + " onchain" })
-    : el("td", { class: "muted", text: "from credit" });
+    ? el("td", { text: amount(c.payment) + " on Solana" })
+    : el("td", { class: "muted", text: "prepaid credit" });
   return el("tr", attrs, n,
     el("td", { class: tone(c.status), text: String(c.status) }),
     paid,
@@ -204,7 +206,7 @@ function renderRequests() {
   const rows = app.requests.slice().reverse().map(row);
   if (!rows.length && app.info) {
     rows.push(el("tr", { class: "empty" }, el("td", { colspan: "5",
-      text: "Nothing sent yet. The first request prepays " + app.info.prepay + " onchain and takes a few seconds. The ones after it spend that credit." })));
+      text: "Nothing sent yet. When the buyer has no credit left it prepays " + app.info.prepay + " on Solana, which takes a few seconds. The next requests are paid from that credit and don't touch the chain." })));
   }
   $("requests").replaceChildren(...rows);
 }
@@ -215,13 +217,19 @@ function select(n) {
   renderDetail();
 }
 
-function funder(r) {
-  return app.requests.filter((x) => x.n < r.n && x.call && x.call.payment).pop();
+function renderLatest() {
+  const p = app.info && app.info.latest;
+  if (!p) return $("detail").replaceChildren();
+  $("detail").replaceChildren(
+    el("h2", { text: "Latest payment" }),
+    el("p", { text: "The buyer's last payment on Solana was " + amount(p) + "." }),
+    ...reads(p));
 }
 
 function renderDetail() {
   const r = app.requests.find((x) => x.n === app.selected);
-  if (!r || r.pending) return $("detail").replaceChildren();
+  if (!r) return renderLatest();
+  if (r.pending) return;
   const title = el("h2", {}, "Request " + r.n);
   if (r.error) {
     title.append(el("span", { class: "st bad", text: "failed" }));
@@ -230,47 +238,41 @@ function renderDetail() {
   const c = r.call;
   title.append(status(c.status), el("span", { class: "muted", text: elapsed(c.millis) }));
 
-  let summary;
+  const parts = [title];
   if (c.payment) {
-    const p = c.payment;
-    summary = el("p", {}, "Sent ", p.merchant ? p.merchant.amount : "a payment", " in ", link(explorer("tx", p.signature), short(p.signature)),
-      c.credit ? ". " + c.price + " paid for this request and " + c.credit + " is kept as credit." : ".");
+    parts.push(el("p", { text: "The buyer paid " + amount(c.payment) + " on Solana" +
+      (c.credit ? ": " + c.price + " for this request and " + c.credit + " as credit for the next ones." : ".") }));
+    parts.push(...reads(c.payment));
   } else {
-    const from = funder(r);
-    summary = el("p", {}, c.price + " came out of session credit, so nothing went onchain.",
-      from ? el("span", {}, " The credit was bought in ", el("span", { class: "nowrap" }, el("button", { type: "button", class: "link", onclick: () => select(from.n) }, "request " + from.n), ".")) : null);
+    const spent = c.price + " came out of prepaid credit, so nothing went on Solana for this request.";
+    parts.push(el("p", { text: c.credit_from ? spent + " The credit was bought with this payment of " + amount(c.credit_from) + "." : spent }));
+    if (c.credit_from) parts.push(...reads(c.credit_from));
   }
-
-  const parts = [title, summary];
-  if (c.payment) parts.push(reads(c.payment));
   parts.push(el("section", {}, el("h2", { text: "HTTP" }), wire(c)));
   $("detail").replaceChildren(...parts);
 }
 
 function reads(p) {
   const pub = p.public;
-  const keys = [p.merchant, p.auditor];
+  const keys = [p.merchant, p.auditor, p.stranger];
   const asset = (x) => x.token === "SOL" ? "SOL" : x.token + " " + short(x.mint);
-  const opened = (label, show) => el("tr", {}, el("th", { text: label }),
-    ...keys.map((x) => x ? el("td", { text: show(x) }) : el("td", { class: "bad", text: "doesn't open" })));
-  const same = (label, node) => el("tr", {}, el("th", { text: label }), el("td", {}, node()), el("td", {}, node()), el("td", {}, node()));
+  const quote = (x) => "quote " + x.quote.slice(0, 8) + "…" + x.quote.slice(-4);
+  const fields = [["amount", (x) => x.amount], ["token", asset], ["pays for", quote]];
 
-  const amount = opened("amount", (x) => x.amount);
-  amount.insertBefore(el("td", { class: "cipher", rowspan: "3" },
-    pub.ciphertext + "…", el("span", { text: pub.bytes + " bytes, encrypted" })), amount.children[1]);
+  const hidden = fields.map(([label, show], i) => el("tr", {}, el("th", { text: label }),
+    i === 0 ? el("td", { class: "cipher", rowspan: "3" }, pub.ciphertext + "…", el("span", { text: pub.bytes + " bytes, encrypted" })) : null,
+    ...keys.map((x) => x ? el("td", { text: show(x) }) : i === 0 ? el("td", { class: "closed", rowspan: "3", text: "can't open it" }) : null)));
 
-  const commitment = p.merchant ? p.merchant.commitment : "";
-  return el("div", { class: "scroll" }, el("table", { class: "reads" },
-    el("thead", {}, el("tr", {}, el("th"), el("th", { text: "anyone" }), el("th", { text: "merchant's viewing key" }), el("th", { text: "agent's receipt key" }))),
+  const table = el("table", { class: "reads" },
+    el("thead", {}, el("tr", {}, el("th"), ...["anyone", "seller's key", "buyer's receipt key", "a random key"].map((text) => el("th", { text })))),
     el("tbody", {},
-      same("sender", () => address(pub.signer)),
-      same("fee", () => pub.fee.toLocaleString("en-US") + " lamports"),
-      amount,
-      opened("asset", asset),
-      opened("memo", (x) => "x402:" + x.quote.slice(0, 8) + "…" + x.quote.slice(-4)),
-      el("tr", {}, el("th", { text: "commitment" }),
-        el("td", { title: commitment, text: short(commitment) }),
-        ...keys.map((x) => x ? el("td", { text: "recomputed, matches" }) : el("td", { class: "bad", text: "can't check" }))))));
+      el("tr", {}, el("th", { text: "from" }), ...Array.from({ length: 4 }, () => el("td", {}, address(pub.signer)))),
+      ...hidden));
+
+  return [
+    el("p", { class: "try" }, "Open this payment in ", link(explorer("tx", p.signature), "Solana Explorer"), " and try to find the amount."),
+    el("div", { class: "scroll" }, table),
+  ];
 }
 
 function header(glyph, h) {
@@ -303,10 +305,8 @@ function wire(c) {
 async function refreshBalance() {
   try {
     const r = await fetch("/demo/balance");
-    $("balance").textContent = r.ok ? (await r.json()).balance + " shielded" : "";
-  } catch {
-    $("balance").textContent = "";
-  }
+    if (r.ok) $("balance").textContent = "an agent with " + (await r.json()).balance + " in a private balance";
+  } catch {}
 }
 
 async function send() {
@@ -321,14 +321,17 @@ async function send() {
     const r = await fetch("/demo/call", { method: "POST" });
     if (!r.ok) throw new Error(await r.text());
     entry.call = await r.json();
-    if (entry.call.payment) refreshBalance();
+    if (entry.call.payment) {
+      app.info.latest = entry.call.payment;
+      refreshBalance();
+    }
   } catch (e) {
     entry.error = e.message;
   }
   entry.pending = false;
   app.busy = false;
   $("send").disabled = false;
-  $("send").textContent = "send";
+  $("send").textContent = "send request";
   select(entry.n);
 }
 
@@ -344,6 +347,7 @@ async function start() {
     $("merchant").replaceChildren(address(info.merchant));
     $("send").disabled = false;
     renderRequests();
+    renderLatest();
     refreshBalance();
   } catch {
     $("price").textContent = "server unreachable";

@@ -1,6 +1,9 @@
 use std::{
     collections::VecDeque,
-    sync::{Arc, PoisonError},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, PoisonError,
+    },
     time::{Duration, Instant},
 };
 
@@ -57,6 +60,9 @@ struct Demo {
     local: String,
     busy: Mutex<()>,
     trace: std::sync::Mutex<Vec<Exchange>>,
+    latest: std::sync::Mutex<Option<Shown>>,
+    credit_left: AtomicU64,
+    payments: Limiter,
     calls: Limiter,
     balances: Limiter,
     requests: Limiter,
@@ -98,32 +104,32 @@ struct Call {
     body: String,
     credit: Option<String>,
     payment: Option<Shown>,
+    credit_from: Option<Shown>,
     exchanges: Vec<Exchange>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Shown {
     signature: String,
     public: Public,
     merchant: Option<Reading>,
     auditor: Option<Reading>,
+    stranger: Option<Reading>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Public {
     signer: String,
-    fee: u64,
     bytes: usize,
     ciphertext: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Reading {
     amount: String,
     token: String,
     mint: String,
     quote: String,
-    commitment: String,
 }
 
 type Failure = (StatusCode, String);
@@ -137,9 +143,11 @@ fn main() -> Result<()> {
         Ok(port) => port.parse().context("PORT is not a port number")?,
         Err(_) => 4020,
     };
-    let calls_per_hour = match std::env::var("CALLS_PER_HOUR") {
-        Ok(calls) => calls.parse().context("CALLS_PER_HOUR is not a number")?,
-        Err(_) => 60,
+    let payments_per_hour = match std::env::var("PAYMENTS_PER_HOUR") {
+        Ok(payments) => payments
+            .parse()
+            .context("PAYMENTS_PER_HOUR is not a number")?,
+        Err(_) => 20,
     };
 
     let chain = Helius::devnet(&api_key);
@@ -180,9 +188,12 @@ fn main() -> Result<()> {
             local: format!("http://127.0.0.1:{port}"),
             busy: Mutex::new(()),
             trace: Default::default(),
-            calls: Limiter::new(calls_per_hour),
-            balances: Limiter::new(calls_per_hour * 2),
-            requests: Limiter::new(calls_per_hour * 5),
+            latest: Default::default(),
+            credit_left: AtomicU64::new(0),
+            payments: Limiter::new(payments_per_hour),
+            calls: Limiter::new(1_000),
+            balances: Limiter::new(1_000),
+            requests: Limiter::new(3_000),
         });
         let apis = Router::new()
             .route(ROUTE, forecast)
@@ -220,6 +231,7 @@ async fn state(State(demo): State<Arc<Demo>>) -> Result<Json<Value>, Failure> {
         "prepay": demo.token.format(demo.unit * PREPAY_UNITS),
         "route": ROUTE,
         "price": demo.token.format(demo.unit),
+        "latest": *demo.latest.lock().unwrap_or_else(PoisonError::into_inner),
     })))
 }
 
@@ -236,6 +248,9 @@ async fn balance(State(demo): State<Arc<Demo>>) -> Result<Json<Value>, Failure> 
 async fn call(State(demo): State<Arc<Demo>>) -> Result<Json<Call>, Failure> {
     let _one_at_a_time = demo.busy.lock().await;
     demo.calls.check()?;
+    if demo.credit_left.load(Ordering::Relaxed) < demo.unit {
+        demo.payments.check()?;
+    }
     demo.funded().await.map_err(failure)?;
     demo.trace
         .lock()
@@ -251,12 +266,24 @@ async fn call(State(demo): State<Arc<Demo>>) -> Result<Json<Call>, Failure> {
         .get(&format!("{}{ROUTE}", demo.local))
         .await
         .map_err(failure)?;
+    demo.credit_left
+        .store(credit.unwrap_or_default(), Ordering::Relaxed);
     let status = response.status().as_u16();
     let body = response.text().await.map_err(failure)?;
     let millis = started.elapsed().as_millis() as u64;
     let payment = match receipt {
         Some(receipt) => Some(demo.show(receipt).await.map_err(failure)?),
         None => None,
+    };
+    let credit_from = {
+        let mut latest = demo.latest.lock().unwrap_or_else(PoisonError::into_inner);
+        match &payment {
+            Some(paid) => {
+                *latest = Some(paid.clone());
+                None
+            }
+            None => latest.clone(),
+        }
     };
     let exchanges = std::mem::take(&mut *demo.trace.lock().unwrap_or_else(PoisonError::into_inner));
     Ok(Json(Call {
@@ -267,6 +294,7 @@ async fn call(State(demo): State<Arc<Demo>>) -> Result<Json<Call>, Failure> {
         body,
         credit: credit.map(|credit| demo.token.format(credit)),
         payment,
+        credit_from,
         exchanges,
     }))
 }
@@ -421,6 +449,7 @@ impl Demo {
             signature: signature.to_string(),
             merchant: read(Opener::Recipient(&self.merchant_key)),
             auditor: read(Opener::Disclosed(&receipt.key)),
+            stranger: read(Opener::Recipient(&ViewingKey::new())),
             public: self.public(signature, &indexed).await?,
         })
     }
@@ -431,7 +460,6 @@ impl Demo {
             token: self.token.symbol.clone(),
             mint: self.token.mint.asset.to_string(),
             quote: hex::encode(payment.quote_id),
-            commitment: hex::encode(payment.utxo_hash),
         }
     }
 
@@ -452,7 +480,6 @@ impl Demo {
                 .as_str()
                 .unwrap_or_default()
                 .to_string(),
-            fee: tx["meta"]["fee"].as_u64().unwrap_or_default(),
             bytes: output.payload.len(),
             ciphertext: hex::encode(&output.payload[..output.payload.len().min(48)]),
         })

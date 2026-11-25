@@ -103,7 +103,7 @@ There's a copy running at https://ring402-demo.vercel.app. To run it yourself:
 cargo run --example demo
 ```
 
-Open http://127.0.0.1:4020 and press send. Each request is a real paid call on devnet. The first one pays onchain, the next few run on session credit, and the agent tops up when the credit runs out. For a paid request the page shows the transaction three ways, as anyone reads it from the chain, as the merchant's viewing key opens it and as the agent's receipt key opens it, with the x402 headers underneath.
+Open http://127.0.0.1:4020 and press send. Each request is a real paid call on devnet. The first one pays onchain, the next few run on session credit, and the agent tops up when the credit runs out. The page shows the latest payment four ways: as anyone reads it from the chain, as the merchant's viewing key opens it, as the agent's receipt key opens it, and as a random key fails to. It links the transaction on Solana Explorer so you can check for yourself that the amount isn't there. The x402 headers for each request are underneath.
 
 ### Running it on a server
 
@@ -124,10 +124,10 @@ It reads its settings from the environment:
 | `PAYER_KEYPAIR` | Path to the agent's keypair file, used when `PAYER_SECRET` isn't set. Defaults to `~/.config/solana/id.json`. |
 | `PORT` | Port to listen on. The image sets 80. |
 | `HOST` | Address to bind. The image sets `0.0.0.0`. |
-| `CALLS_PER_HOUR` | Paid calls the whole demo will make per hour. Default 60. |
+| `PAYMENTS_PER_HOUR` | Onchain payments the demo will make per hour. Each one prepays six requests. Default 20. |
 | `MINT` | Price the APIs in this SPL token instead of SOL. |
 
-Use a separate wallet for the agent, not your main one, and keep only a little devnet SOL in it. Anyone who opens the page can spend from it, up to `CALLS_PER_HOUR`.
+Use a separate wallet for the agent, not your main one, and keep only a little devnet SOL in it. Anyone who opens the page can spend from it, up to `PAYMENTS_PER_HOUR`.
 
 ```bash
 solana-keygen new --no-bip39-passphrase -o .keys/demo-payer.json
@@ -159,7 +159,7 @@ vercel env add PAYER_SECRET production < .keys/demo-payer.json
 vercel deploy --prod
 ```
 
-Errors sent to the browser have the API key cut out of them, and the paid route, the balance lookup and the demo calls each have an hourly cap so a busy page can't drain the wallet or your Helius credits.
+Errors sent to the browser have the API key cut out of them, and onchain payments, the paid route, the balance lookup and the demo calls each have an hourly cap so a busy page can't drain the wallet or your Helius credits. Requests paid from credit don't count toward the payment cap.
 
 ## Sessions
 
