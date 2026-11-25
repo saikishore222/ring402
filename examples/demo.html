@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ring402 devnet demo</title>
+<script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
+<script defer src="/_vercel/insights/script.js"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5.25' fill='none' stroke='%23888' stroke-width='2.5'/></svg>">
 <style>
   :root {
@@ -12,6 +14,7 @@
     --ink: #171717;
     --muted: #6c6c70;
     --faint: #a2a2a6;
+    --redact: #2b2b2b;
     --line: #e7e7e3;
     --hover: #f4f4f1;
     --ok: #1a7f37;
@@ -26,6 +29,7 @@
       --ink: #e9e9e9;
       --muted: #97979c;
       --faint: #5f5f64;
+      --redact: #4a4a4e;
       --line: #252525;
       --hover: #1a1a1a;
       --ok: #4fbf63;
@@ -89,12 +93,15 @@
   .scroll { overflow-x: auto; margin-top: 20px; }
   .try { margin-top: 18px; }
   .reads { min-width: 760px; table-layout: fixed; }
-  .reads th:first-child { width: 84px; }
-  .reads tbody th { color: var(--muted); font-size: 14px; }
+  .reads th:first-child { width: 104px; }
+  .reads thead th { color: var(--ink); font-size: 14px; }
+  .reads thead th:first-child, .reads tbody th { color: var(--muted); font-size: 14px; }
+  .reads thead th span { display: block; color: var(--muted); font-size: 13px; }
+  .reads td.public span { font-family: var(--sans); font-size: 14px; color: var(--muted); }
   .reads td { font: 13px/20px var(--mono); overflow-wrap: anywhere; }
-  .reads td.cipher { color: var(--faint); }
-  .reads td.cipher span { display: block; margin-top: 4px; font-family: var(--sans); color: var(--muted); }
-  .reads td.closed { font-family: var(--sans); font-size: 14px; color: var(--muted); }
+  .reads .bar { display: inline-block; height: 13px; vertical-align: -2px; background: var(--redact); border-radius: 2px; }
+  .blob { margin-top: 12px; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blob code { color: var(--faint); }
 
   .wire { margin-top: 14px; font: 13px/22px var(--mono); }
   .wire .g { color: var(--faint); user-select: none; }
@@ -260,19 +267,25 @@ function reads(p) {
   const quote = (x) => "quote " + x.quote.slice(0, 8) + "…" + x.quote.slice(-4);
   const fields = [["amount", (x) => x.amount], ["token", asset], ["pays for", quote]];
 
-  const hidden = fields.map(([label, show], i) => el("tr", {}, el("th", { text: label }),
-    i === 0 ? el("td", { class: "cipher", rowspan: "3" }, pub.ciphertext + "…", el("span", { text: pub.bytes + " bytes, encrypted" })) : null,
-    ...keys.map((x) => x ? el("td", { text: show(x) }) : i === 0 ? el("td", { class: "closed", rowspan: "3", text: "can't open it" }) : null)));
+  const sample = p.merchant || p.auditor;
+  const bar = (show) => el("span", { class: "bar", title: "encrypted", style: "width:" + (sample ? show(sample).length : 10) + "ch" });
+  const cell = (x, show) => x ? el("td", { text: show(x) }) : el("td", {}, bar(show));
+  const hidden = fields.map(([label, show]) => el("tr", {}, el("th", { text: label }),
+    el("td", {}, bar(show)), ...keys.map((x) => cell(x, show))));
 
   const table = el("table", { class: "reads" },
-    el("thead", {}, el("tr", {}, el("th"), ...["anyone", "seller's key", "buyer's receipt key", "a random key"].map((text) => el("th", { text })))),
+    el("thead", {}, el("tr", {}, el("th", { text: "who's looking" }),
+      ...[["anyone", "no key"], ["the seller", "its viewing key"], ["the buyer", "receipt key"], ["someone else", "the wrong key"]]
+        .map(([who, key]) => el("th", {}, who, el("span", { text: key }))))),
     el("tbody", {},
-      el("tr", {}, el("th", { text: "from" }), ...Array.from({ length: 4 }, () => el("td", {}, address(pub.signer)))),
+      el("tr", {}, el("th", { text: "from" }),
+        el("td", { class: "public", colspan: "4" }, address(pub.signer), el("span", { text: " the buyer. Public, everyone sees this." }))),
       ...hidden));
 
   return [
     el("p", { class: "try" }, "Open this payment in ", link(explorer("tx", p.signature), "Solana Explorer"), " and try to find the amount."),
     el("div", { class: "scroll" }, table),
+    el("p", { class: "blob" }, "On the chain those three rows are one encrypted blob of " + pub.bytes + " bytes: ", el("code", { text: pub.ciphertext + "…" })),
   ];
 }
 
