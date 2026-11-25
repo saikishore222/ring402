@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ring402</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5.25' fill='none' stroke='%23888' stroke-width='2.5'/></svg>">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fdfdfc;
+    --ink: #171717;
+    --muted: #6c6c70;
+    --faint: #a2a2a6;
+    --line: #e7e7e3;
+    --hover: #f4f4f1;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --bad: #c4291c;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111111;
+      --ink: #e9e9e9;
+      --muted: #97979c;
+      --faint: #5f5f64;
+      --line: #252525;
+      --hover: #1a1a1a;
+      --ok: #4fbf63;
+      --warn: #d4a72c;
+      --bad: #f26b5e;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--sans); }
+  main { max-width: 880px; margin: 0 auto; padding: 56px 28px 120px; }
+  h1, h2, p, pre, dl, dd { margin: 0; }
+  h1 { font: 500 18px var(--mono); }
+  h2 { font-size: 15px; font-weight: 500; }
+  a { color: inherit; text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: currentColor; }
+  ::selection { background: var(--ink); color: var(--bg); }
+  code, pre, .mono { font-family: var(--mono); font-size: 13px; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  .nowrap { white-space: nowrap; }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); }
+
+  button {
+    font: 14px var(--sans); color: var(--bg); background: var(--ink); cursor: pointer;
+    border: 0; border-radius: 4px; padding: 5px 14px;
+  }
+  button:disabled { opacity: .45; cursor: default; }
+  button.link { font: inherit; color: inherit; background: none; padding: 0; border-radius: 0; text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+  button.link:hover { text-decoration-color: currentColor; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  header p { margin-top: 10px; max-width: 62ch; }
+  .parties { display: grid; grid-template-columns: max-content max-content 1fr; gap: 2px 18px; margin-top: 22px; font-size: 14px; }
+  .parties dt { color: var(--muted); }
+  .parties dd { font: 13px/22px var(--mono); }
+  .parties dd.muted { font: 14px/22px var(--sans); }
+
+  section { margin-top: 44px; }
+  .send { display: flex; align-items: center; gap: 14px; }
+  .send code { font-size: 14px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 400; color: var(--muted); font-size: 13px; }
+  th, td { padding: 7px 16px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th:last-child, td:last-child { padding-right: 0; }
+  .r { text-align: right; }
+
+  .requests { margin-top: 18px; }
+  .requests td { font: 13px var(--mono); }
+  .requests tbody tr { cursor: pointer; }
+  .requests tbody tr:hover td, .requests tbody tr.sel td { background: var(--hover); }
+  .requests tbody tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--ink); }
+  .requests td:first-child, .requests th:first-child { padding-left: 10px; width: 3em; }
+  .requests tr.empty td { font: 14px var(--sans); color: var(--muted); cursor: default; background: none; padding-left: 0; }
+
+  #detail h2 + p { margin-top: 6px; max-width: 66ch; }
+  #detail h2 .st { margin-left: 10px; font: 13px var(--mono); }
+  #detail h2 .muted { margin-left: 10px; font: 13px var(--mono); }
+
+  .scroll { overflow-x: auto; margin-top: 20px; }
+  .reads { min-width: 640px; table-layout: fixed; }
+  .reads th:first-child { width: 104px; }
+  .reads tbody th { color: var(--muted); font-size: 14px; }
+  .reads td { font: 13px/20px var(--mono); overflow-wrap: anywhere; }
+  .reads td.cipher { color: var(--faint); }
+  .reads td.cipher span { display: block; margin-top: 4px; font-family: var(--sans); color: var(--muted); }
+
+  .wire { margin-top: 14px; font: 13px/22px var(--mono); }
+  .wire .g { color: var(--faint); user-select: none; }
+  .wire .gap { height: 14px; }
+  .wire details > summary { list-style: none; cursor: pointer; display: flex; white-space: pre; }
+  .wire details > summary::-webkit-details-marker { display: none; }
+  .wire .raw { color: var(--faint); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .wire summary:hover .raw { color: var(--muted); }
+  .wire .plain { display: flex; white-space: pre; }
+  .wire pre { padding: 2px 0 10px 2ch; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .wire pre .k { color: var(--muted); }
+  .wire .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre.error { margin-top: 10px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--bad); }
+
+  @media (max-width: 640px) {
+    main { padding: 32px 18px 80px; }
+    .parties { grid-template-columns: max-content 1fr; }
+    .parties dd:nth-of-type(2n) { grid-column: 2; }
+    .requests td { white-space: nowrap; }
+    .requests th:nth-child(4), .requests td:nth-child(4) { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>ring402</h1>
+  <p>x402 payments where the amount stays private. Each request below is a real paid call on Solana <span id="network">devnet</span>, settled with a confidential transfer on <a href="https://www.helius.dev/docs/privacy" target="_blank" rel="noreferrer">Privacy Rings</a>.</p>
+  <dl class="parties">
+    <dt>agent</dt><dd id="agent">…</dd><dd id="balance" class="muted"></dd>
+    <dt>merchant</dt><dd id="merchant">…</dd><dd class="muted">viewing key only, can't spend</dd>
+  </dl>
+</header>
+
+<section>
+  <div class="send">
+    <code id="route">GET /forecast</code>
+    <span id="price" class="muted"></span>
+    <button type="button" id="send" disabled>send</button>
+  </div>
+  <table class="requests">
+    <thead><tr><th>#</th><th>status</th><th>paid</th><th>credit left</th><th class="r">time</th></tr></thead>
+    <tbody id="requests"></tbody>
+  </table>
+</section>
+
+<section id="detail"></section>
+
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const short = (s) => s && s.length > 12 ? s.slice(0, 4) + "…" + s.slice(-4) : s;
+const explorer = (kind, id) => "https://explorer.solana.com/" + kind + "/" + id + "?cluster=devnet";
+const elapsed = (ms) => ms >= 1000 ? (ms / 1000).toFixed(2) + " s" : (ms < 1 ? "<1" : ms) + " ms";
+const REASON = { 200: "OK", 400: "Bad Request", 402: "Payment Required", 429: "Too Many Requests", 500: "Internal Server Error", 502: "Bad Gateway" };
+
+const app = { info: null, requests: [], selected: null, busy: false };
+
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  n.append(...kids.filter((k) => k != null && k !== false));
+  return n;
+}
+
+const link = (href, text) => el("a", { href, target: "_blank", rel: "noreferrer", text });
+const address = (a) => el("a", { href: explorer("address", a), target: "_blank", rel: "noreferrer", title: a, text: short(a) });
+const tone = (code) => code === 402 ? "warn" : code < 300 ? "ok" : "bad";
+const status = (code) => el("span", { class: "st " + tone(code), text: REASON[code] ? code + " " + REASON[code] : String(code) });
+
+function json(value) {
+  const text = JSON.stringify(value, null, 2).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const pre = el("pre");
+  pre.innerHTML = text.replace(/("(?:\\.|[^"\\])*")(\s*:)/g, '<span class="k">$1</span>$2');
+  return pre;
+}
+
+function row(r) {
+  const n = el("td", { class: "faint", text: String(r.n) });
+  if (r.pending) {
+    return el("tr", {}, n, el("td", { class: "faint", text: "…" }), el("td", { class: "muted", text: "sending" }), el("td"), el("td"));
+  }
+  const attrs = { class: r.n === app.selected ? "sel" : null, onclick: () => select(r.n) };
+  if (r.error) {
+    return el("tr", attrs, n, el("td", { class: "bad", text: "error" }), el("td"), el("td"), el("td"));
+  }
+  const c = r.call;
+  const paid = c.payment
+    ? el("td", { text: (c.payment.merchant ? c.payment.merchant.amount : "") + " onchain" })
+    : el("td", { class: "muted", text: "from credit" });
+  return el("tr", attrs, n,
+    el("td", { class: tone(c.status), text: String(c.status) }),
+    paid,
+    el("td", { class: "muted", text: c.credit ?? "" }),
+    el("td", { class: "r muted", text: elapsed(c.millis) }));
+}
+
+function renderRequests() {
+  const rows = app.requests.slice().reverse().map(row);
+  if (!rows.length && app.info) {
+    rows.push(el("tr", { class: "empty" }, el("td", { colspan: "5",
+      text: "Nothing sent yet. The first request prepays " + app.info.prepay + " onchain and takes a few seconds. The ones after it spend that credit." })));
+  }
+  $("requests").replaceChildren(...rows);
+}
+
+function select(n) {
+  app.selected = n;
+  renderRequests();
+  renderDetail();
+}
+
+function funder(r) {
+  return app.requests.filter((x) => x.n < r.n && x.call && x.call.payment).pop();
+}
+
+function renderDetail() {
+  const r = app.requests.find((x) => x.n === app.selected);
+  if (!r || r.pending) return $("detail").replaceChildren();
+  const title = el("h2", {}, "Request " + r.n);
+  if (r.error) {
+    title.append(el("span", { class: "st bad", text: "failed" }));
+    return $("detail").replaceChildren(title, el("pre", { class: "error", text: r.error }));
+  }
+  const c = r.call;
+  title.append(status(c.status), el("span", { class: "muted", text: elapsed(c.millis) }));
+
+  let summary;
+  if (c.payment) {
+    const p = c.payment;
+    summary = el("p", {}, "Sent ", p.merchant ? p.merchant.amount : "a payment", " in ", link(explorer("tx", p.signature), short(p.signature)),
+      c.credit ? ". " + c.price + " paid for this request and " + c.credit + " is kept as credit." : ".");
+  } else {
+    const from = funder(r);
+    summary = el("p", {}, c.price + " came out of session credit, so nothing went onchain.",
+      from ? el("span", {}, " The credit was bought in ", el("span", { class: "nowrap" }, el("button", { type: "button", class: "link", onclick: () => select(from.n) }, "request " + from.n), ".")) : null);
+  }
+
+  const parts = [title, summary];
+  if (c.payment) parts.push(reads(c.payment));
+  parts.push(el("section", {}, el("h2", { text: "HTTP" }), wire(c)));
+  $("detail").replaceChildren(...parts);
+}
+
+function reads(p) {
+  const pub = p.public;
+  const keys = [p.merchant, p.auditor];
+  const asset = (x) => x.token === "SOL" ? "SOL" : x.token + " " + short(x.mint);
+  const opened = (label, show) => el("tr", {}, el("th", { text: label }),
+    ...keys.map((x) => x ? el("td", { text: show(x) }) : el("td", { class: "bad", text: "doesn't open" })));
+  const same = (label, node) => el("tr", {}, el("th", { text: label }), el("td", {}, node()), el("td", {}, node()), el("td", {}, node()));
+
+  const amount = opened("amount", (x) => x.amount);
+  amount.insertBefore(el("td", { class: "cipher", rowspan: "3" },
+    pub.ciphertext + "…", el("span", { text: pub.bytes + " bytes, encrypted" })), amount.children[1]);
+
+  const commitment = p.merchant ? p.merchant.commitment : "";
+  return el("div", { class: "scroll" }, el("table", { class: "reads" },
+    el("thead", {}, el("tr", {}, el("th"), el("th", { text: "anyone" }), el("th", { text: "merchant's viewing key" }), el("th", { text: "agent's receipt key" }))),
+    el("tbody", {},
+      same("sender", () => address(pub.signer)),
+      same("fee", () => pub.fee.toLocaleString("en-US") + " lamports"),
+      amount,
+      opened("asset", asset),
+      opened("memo", (x) => "x402:" + x.quote.slice(0, 8) + "…" + x.quote.slice(-4)),
+      el("tr", {}, el("th", { text: "commitment" }),
+        el("td", { title: commitment, text: short(commitment) }),
+        ...keys.map((x) => x ? el("td", { text: "recomputed, matches" }) : el("td", { class: "bad", text: "can't check" }))))));
+}
+
+function header(glyph, h) {
+  const value = h.name === "payment-session" ? h.value.slice(0, 10) + "…" : h.value;
+  const parts = [el("span", { class: "g", text: glyph + " " }), h.name + ": ", el("span", { class: "raw", text: value })];
+  if (!h.decoded) return el("div", { class: "plain" }, ...parts);
+  return el("details", {}, el("summary", { title: "Decode" }, ...parts), json(h.decoded));
+}
+
+function line(glyph, ...what) {
+  return el("div", {}, el("span", { class: "g", text: glyph + " " }), ...what);
+}
+
+function wire(c) {
+  const lines = [];
+  for (const x of c.exchanges) {
+    lines.push(line(">", x.method + " " + x.path));
+    lines.push(...x.sent.map((h) => header(">", h)));
+    lines.push(line("<", status(x.status)));
+    lines.push(...x.received.map((h) => header("<", h)));
+    if (x.status === 402 && c.payment) {
+      lines.push(line("*", "sent transfer ", link(explorer("tx", c.payment.signature), short(c.payment.signature))));
+    }
+    lines.push(el("div", { class: "gap" }));
+  }
+  lines.push(el("div", { class: "body", text: c.body }));
+  return el("div", { class: "wire" }, ...lines);
+}
+
+async function refreshBalance() {
+  try {
+    const r = await fetch("/demo/balance");
+    $("balance").textContent = r.ok ? (await r.json()).balance + " shielded" : "";
+  } catch {
+    $("balance").textContent = "";
+  }
+}
+
+async function send() {
+  if (app.busy) return;
+  app.busy = true;
+  $("send").disabled = true;
+  $("send").textContent = "sending…";
+  const entry = { n: app.requests.length + 1, pending: true };
+  app.requests.push(entry);
+  renderRequests();
+  try {
+    const r = await fetch("/demo/call", { method: "POST" });
+    if (!r.ok) throw new Error(await r.text());
+    entry.call = await r.json();
+    if (entry.call.payment) refreshBalance();
+  } catch (e) {
+    entry.error = e.message;
+  }
+  entry.pending = false;
+  app.busy = false;
+  $("send").disabled = false;
+  $("send").textContent = "send";
+  select(entry.n);
+}
+
+async function start() {
+  $("send").addEventListener("click", send);
+  try {
+    const info = await (await fetch("/demo/state")).json();
+    app.info = info;
+    $("network").textContent = info.network;
+    $("route").textContent = "GET " + info.route;
+    $("price").textContent = info.price;
+    $("agent").replaceChildren(address(info.agent));
+    $("merchant").replaceChildren(address(info.merchant));
+    $("send").disabled = false;
+    renderRequests();
+    refreshBalance();
+  } catch {
+    $("price").textContent = "server unreachable";
+    $("price").className = "bad";
+  }
+}
+
+start();
+</script>
+</body>
+</html>

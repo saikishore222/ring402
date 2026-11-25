@@ -1,0 +1,43 @@
+[package]
+name = "ring402"
+version = "0.1.0"
+edition = "2021"
+description = "Confidential x402 payments on Solana Privacy Rings"
+license = "MIT"
+
+[features]
+default = ["server", "client"]
+helius = ["dep:spr-client"]
+server = ["helius", "dep:axum", "dep:tower", "dep:tokio", "dep:getrandom"]
+client = ["helius", "dep:reqwest", "dep:tokio", "dep:spr-program", "dep:spr-interface", "dep:solana-keypair", "dep:solana-signer"]
+
+[dependencies]
+base64 = "0.22"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+solana-signature = "3.4"
+spr-event = { git = "https://github.com/helius-labs/zolana", rev = "ca4cf4f6f0c83c0b225342e4bc6f16b3da83eb08" }
+spr-keypair = { git = "https://github.com/helius-labs/zolana", rev = "ca4cf4f6f0c83c0b225342e4bc6f16b3da83eb08" }
+spr-transaction = { git = "https://github.com/helius-labs/zolana", rev = "ca4cf4f6f0c83c0b225342e4bc6f16b3da83eb08" }
+
+axum = { version = "0.8", default-features = false, optional = true }
+getrandom = { version = "0.3", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+solana-keypair = { version = "3.1.2", optional = true }
+solana-signer = { version = "3.0", optional = true }
+spr-client = { git = "https://github.com/helius-labs/zolana", rev = "ca4cf4f6f0c83c0b225342e4bc6f16b3da83eb08", features = ["solana-rpc"], optional = true }
+spr-interface = { git = "https://github.com/helius-labs/zolana", rev = "ca4cf4f6f0c83c0b225342e4bc6f16b3da83eb08", optional = true }
+spr-program = { git = "https://github.com/helius-labs/zolana", rev = "ca4cf4f6f0c83c0b225342e4bc6f16b3da83eb08", optional = true }
+tokio = { version = "1", features = ["rt"], optional = true }
+tower = { version = "0.5", default-features = false, optional = true }
+
+[dev-dependencies]
+anyhow = "1.0"
+axum = "0.8"
+dotenvy = "0.15"
+shellexpand = "3"
+solana-address = { version = "2.6", features = ["atomic", "borsh", "bytemuck", "copy", "decode", "wincode"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
+tower = { version = "0.5", features = ["util"] }

@@ -1,0 +1,7 @@
+target
+.env*
+!.env.example
+.keys
+*.json.key
+.git
+.vercel
